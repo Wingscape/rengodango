@@ -3,7 +3,6 @@ mod commands;
 use serenity::all::{CreateInteractionResponse, CreateInteractionResponseMessage, GatewayIntents};
 use serenity::async_trait;
 use serenity::model::application::{Command, Interaction};
-use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::model::id::GuildId;
 use serenity::prelude::{Client, Context, EventHandler};
@@ -13,28 +12,13 @@ struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {
-    // // Dispatched when a message is created.
-    // async fn message(&self, ctx: Context, msg: Message) {
-    //     if msg.content == "!ping" {
-    //         if let Err(why) = msg.channel_id.say(&ctx.http, "Pong!").await {
-    //             println!("Error sending message: {why:?}");
-    //         }
-    //     }
-
-    //     if msg.content == "hello" {
-    //         if let Err(why) = msg.channel_id.say(&ctx.http, "Holla").await {
-    //             println!("Error sending message: {why:?}");
-    //         }
-    //     }
-    // }
-
     // Dispatched when an interaction is created (e.g a slash command was used or a button was clicked).
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::Command(command) = interaction {
-            println!("{command:#?}");
+            println!("Received command interaction: {command:?}");
 
             let content = match command.data.name.as_str() {
-                "hello" => Some(commands::hello::run(&command.data.options())),
+                "anime" => Some(commands::anime::run(&command.data.options()).await),
                 _ => Some("not implemented :".to_string()),
             };
 
@@ -61,20 +45,21 @@ impl EventHandler for Handler {
         );
 
         let commands = guild_id
-            .set_commands(&ctx.http, vec![commands::hello::register()])
+            .set_commands(&ctx.http, vec![commands::anime::register()])
             .await;
 
         println!("guild slash command: {commands:#?}");
+
+        // TODO: create a global command
+        // let commands = Command::create_global_command(&ctx.http, commands::hello::register()).await;
+
+        // println!("guild slash command: {commands:#?}");
     }
 }
 
 #[tokio::main]
 async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("weird");
-    // let intents = GatewayIntents::GUILD_MESSAGES
-    //     | GatewayIntents::DIRECT_MESSAGES
-    //     | GatewayIntents::MESSAGE_CONTENT;
-
     let intents = GatewayIntents::empty();
 
     let mut client = Client::builder(&token, intents)
