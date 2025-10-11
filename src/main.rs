@@ -15,11 +15,11 @@ impl EventHandler for Handler {
     // Dispatched when an interaction is created (e.g a slash command was used or a button was clicked).
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::Command(command) = interaction {
-            println!("Received command interaction: {command:?}");
+            println!("received command interaction: {command:?}");
 
             let content = match command.data.name.as_str() {
                 "anime" => Some(commands::anime::run(&command.data.options()).await),
-                _ => Some("not implemented :".to_string()),
+                _ => Some("this feature is not implemented :(".to_string()),
             };
 
             if let Some(content) = content {
@@ -27,7 +27,7 @@ impl EventHandler for Handler {
                 let builder = CreateInteractionResponse::Message(data);
 
                 if let Err(why) = command.create_response(&ctx.http, builder).await {
-                    println!("Cannot respond to slash command: {why}");
+                    println!("cannot respond to slash command: {why}");
                 }
             }
         }
@@ -39,7 +39,7 @@ impl EventHandler for Handler {
 
         let guild_id = GuildId::new(
             env::var("GUILD_ID")
-                .expect("Expected GUILD_ID in environment")
+                .expect("expected GUILD_ID in environment")
                 .parse()
                 .expect("GUILD_ID must be an integer"),
         );
@@ -48,7 +48,10 @@ impl EventHandler for Handler {
             .set_commands(&ctx.http, vec![commands::anime::register()])
             .await;
 
-        println!("guild slash command: {commands:#?}");
+        match commands {
+            Ok(bla) => println!("guild slash command: {bla:?}"),
+            Err(e) => println!("error: {e}"),
+        }
 
         // TODO: create a global command
         // let commands = Command::create_global_command(&ctx.http, commands::hello::register()).await;

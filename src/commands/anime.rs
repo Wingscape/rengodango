@@ -7,24 +7,26 @@ pub async fn run(options: &[ResolvedOption<'_>]) -> String {
         ..
     }) = options.first()
     {
-        match request_api(anime).await {
-            Ok(resp) => format!("{resp}").to_string(),
-            Err(e) => format!("Error: {e}").to_string(),
+        match request(anime).await {
+            Ok(response) => format!("{response}"),
+            Err(e) => format!("error: {e}"),
         }
     } else {
-        "No".to_string()
+        "please provide a valid value".to_string()
     }
 }
 
-pub async fn request_api(anime: &str) -> Result<String, reqwest::Error> {
+pub async fn request(anime: &str) -> Result<String, reqwest::Error> {
     let endpoint = format!("https://api.jikan.moe/v4/anime?q={}", anime);
-    let api_response = reqwest::get(endpoint)
+    let response = reqwest::get(&endpoint)
         .await?
         .json::<serde_json::Value>()
         .await?;
 
-    println!("{}", api_response["data"][0]["url"]);
-    Ok(api_response["data"][0]["url"].to_string())
+    println!("API called: {}", &endpoint);
+    println!("response to user: {}", response["data"][0]["url"]);
+
+    Ok(response["data"][0]["url"].to_string())
 }
 
 pub fn register() -> CreateCommand {
