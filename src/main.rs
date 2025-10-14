@@ -1,11 +1,11 @@
 mod commands;
 
-use serenity::all::{CreateInteractionResponse, CreateInteractionResponseMessage, GatewayIntents};
 use serenity::async_trait;
-use serenity::model::application::{Command, Interaction};
+use serenity::builder::{CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage};
+use serenity::model::application::Interaction;
 use serenity::model::gateway::Ready;
 use serenity::model::id::GuildId;
-use serenity::prelude::{Client, Context, EventHandler};
+use serenity::prelude::{Client, Context, EventHandler, GatewayIntents};
 use std::env;
 
 struct Handler;
@@ -19,11 +19,15 @@ impl EventHandler for Handler {
 
             let content = match command.data.name.as_str() {
                 "anime" => Some(commands::anime::run(&command.data.options()).await),
-                _ => Some("this feature is not implemented :(".to_string()),
+                _ => None,
             };
 
             if let Some(content) = content {
-                let data = CreateInteractionResponseMessage::new().content(content);
+                let anime_embed = CreateEmbed::new()
+                    .title(format!("{}", content.mal_title))
+                    .description(format!("ID: {}", content.mal_id));
+
+                let data = CreateInteractionResponseMessage::new().embed(anime_embed);
                 let builder = CreateInteractionResponse::Message(data);
 
                 if let Err(why) = command.create_response(&ctx.http, builder).await {

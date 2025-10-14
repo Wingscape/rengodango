@@ -1,32 +1,45 @@
 use serenity::builder::{CreateCommand, CreateCommandOption};
 use serenity::model::application::{CommandOptionType, ResolvedOption, ResolvedValue};
 
-pub async fn run(options: &[ResolvedOption<'_>]) -> String {
+pub struct MALAnime {
+    pub mal_id: i64,
+    pub mal_title: String,
+}
+
+pub async fn run(options: &[ResolvedOption<'_>]) -> MALAnime {
     if let Some(ResolvedOption {
         value: ResolvedValue::String(anime),
         ..
     }) = options.first()
     {
-        match request(anime).await {
-            Ok(response) => format!("{response}"),
-            Err(e) => format!("error: {e}"),
-        }
+        let response = request(anime).await.unwrap();
+        response
     } else {
-        "please provide a valid value".to_string()
+        panic!("please provide a valid value")
     }
 }
 
-pub async fn request(anime: &str) -> Result<String, reqwest::Error> {
+pub async fn request(anime: &str) -> Result<MALAnime, reqwest::Error> {
     let endpoint = format!("https://api.jikan.moe/v4/anime?q={}", anime);
     let response = reqwest::get(&endpoint)
         .await?
         .json::<serde_json::Value>()
         .await?;
 
-    println!("API called: {}", &endpoint);
-    println!("response to user: {}", response["data"][0]["url"]);
+    let response_api_url = response["data"][0]["url"].as_str().unwrap();
 
-    Ok(response["data"][0]["url"].to_string())
+    println!("API called: {}", &endpoint);
+    println!("response to user: {}", response_api_url);
+
+    let mal_anime = MALAnime {
+        mal_id: response["data"][0]["mal_id"].as_i64().unwrap(),
+        mal_title: response["data"][0]["titles"][0]["title"]
+            .as_str()
+            .unwrap()
+            .to_string(),
+    };
+
+    Ok(mal_anime)
 }
 
 pub fn register() -> CreateCommand {
