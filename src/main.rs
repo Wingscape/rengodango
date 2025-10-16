@@ -1,7 +1,11 @@
 mod commands;
 
+use serenity::all::{CreateButton, CreateSelectMenu, CreateSelectMenuKind};
 use serenity::async_trait;
-use serenity::builder::{CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage};
+use serenity::builder::{
+    CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
+    CreateSelectMenuOption,
+};
 use serenity::model::application::Interaction;
 use serenity::model::gateway::Ready;
 use serenity::model::id::GuildId;
@@ -23,11 +27,41 @@ impl EventHandler for Handler {
             };
 
             if let Some(content) = content {
-                let anime_embed = CreateEmbed::new()
-                    .title(format!("{}", content.mal_title))
-                    .description(format!("ID: {}", content.mal_id));
+                // TODO: do something about multiple data vector from content
+                let anime_button = CreateButton::new_link(format!(
+                    "https://myanimelist.net/anime/21273/Gochuumon_wa_Usagi_desu_ka"
+                ))
+                .label("Save?");
 
-                let data = CreateInteractionResponseMessage::new().embed(anime_embed);
+                let anime_embeds: Vec<CreateEmbed> = content
+                    .iter()
+                    .take(3)
+                    .map(|x| {
+                        CreateEmbed::new()
+                            .title(format!("{}", x.title))
+                            .url(format!("{}", x.url))
+                            .image(format!("{}", x.image))
+                            .description(format!("ID: {}, Synopsis: {}", x.id, x.synopsis))
+                    })
+                    .collect();
+
+                let anime_menu_options: Vec<CreateSelectMenuOption> = content
+                    .iter()
+                    .take(3)
+                    .map(|x| CreateSelectMenuOption::new(x.title.clone(), x.title.clone()))
+                    .collect();
+
+                let anime_select = CreateSelectMenu::new(
+                    "anime_select",
+                    CreateSelectMenuKind::String {
+                        options: anime_menu_options,
+                    },
+                );
+
+                let data = CreateInteractionResponseMessage::new()
+                    .embeds(anime_embeds)
+                    .select_menu(anime_select)
+                    .button(anime_button);
                 let builder = CreateInteractionResponse::Message(data);
 
                 if let Err(why) = command.create_response(&ctx.http, builder).await {

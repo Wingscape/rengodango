@@ -2,11 +2,14 @@ use serenity::builder::{CreateCommand, CreateCommandOption};
 use serenity::model::application::{CommandOptionType, ResolvedOption, ResolvedValue};
 
 pub struct MALAnime {
-    pub mal_id: i64,
-    pub mal_title: String,
+    pub id: i64,
+    pub title: String,
+    pub url: String,
+    pub image: String,
+    pub synopsis: String,
 }
 
-pub async fn run(options: &[ResolvedOption<'_>]) -> MALAnime {
+pub async fn run(options: &[ResolvedOption<'_>]) -> Vec<MALAnime> {
     if let Some(ResolvedOption {
         value: ResolvedValue::String(anime),
         ..
@@ -19,25 +22,30 @@ pub async fn run(options: &[ResolvedOption<'_>]) -> MALAnime {
     }
 }
 
-pub async fn request(anime: &str) -> Result<MALAnime, reqwest::Error> {
+pub async fn request(anime: &str) -> Result<Vec<MALAnime>, reqwest::Error> {
     let endpoint = format!("https://api.jikan.moe/v4/anime?q={}", anime);
     let response = reqwest::get(&endpoint)
         .await?
         .json::<serde_json::Value>()
         .await?;
 
-    let response_api_url = response["data"][0]["url"].as_str().unwrap();
-
     println!("API called: {}", &endpoint);
-    println!("response to user: {}", response_api_url);
 
-    let mal_anime = MALAnime {
-        mal_id: response["data"][0]["mal_id"].as_i64().unwrap(),
-        mal_title: response["data"][0]["titles"][0]["title"]
-            .as_str()
-            .unwrap()
-            .to_string(),
-    };
+    let mal_data = response["data"].as_array().unwrap();
+
+    let mal_anime: Vec<MALAnime> = mal_data
+        .iter()
+        .map(|x| MALAnime {
+            id: x["mal_id"].as_i64().unwrap(),
+            title: x["title"].as_str().unwrap().to_string(),
+            url: x["url"].as_str().unwrap().to_string(),
+            image: x["images"]["webp"]["image_url"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+            synopsis: x["synopsis"].as_str().unwrap().to_string(),
+        })
+        .collect();
 
     Ok(mal_anime)
 }
