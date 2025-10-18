@@ -1,12 +1,11 @@
 mod commands;
 
-use serenity::all::{CreateButton, CreateSelectMenu, CreateSelectMenuKind};
 use serenity::async_trait;
 use serenity::builder::{
-    CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
-    CreateSelectMenuOption,
+    CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
+    CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption,
 };
-use serenity::model::application::Interaction;
+use serenity::model::application::{ButtonStyle, ComponentInteractionDataKind, Interaction};
 use serenity::model::gateway::Ready;
 use serenity::model::id::GuildId;
 use serenity::prelude::{Client, Context, EventHandler, GatewayIntents};
@@ -18,37 +17,61 @@ struct Handler;
 impl EventHandler for Handler {
     // Dispatched when an interaction is created (e.g a slash command was used or a button was clicked).
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::Command(command) = interaction {
-            println!("received command interaction: {command:?}");
+        println!("{:#?}, {:#?}", ctx, interaction);
 
+        if let Interaction::Component(component) = &interaction {
+            let content = match component.data.custom_id.as_str() {
+                "anime_select" => match &component.data.kind {
+                    ComponentInteractionDataKind::StringSelect { values } => {
+                        if let Some(value_select) = values.first() {
+                            Some(commands::anime_id::run(value_select.as_str()).await)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                },
+                _ => None,
+            };
+
+            if let Some(content) = content {
+                let anime_embed = CreateEmbed::new()
+                    .title(format!("{}", content.title))
+                    .url(format!("{}", content.url))
+                    .image(format!("{}", content.image))
+                    .description(format!(
+                        "ID: {}, Synopsis: {}",
+                        content.id, content.synopsis
+                    ));
+
+                let anime_button = CreateButton::new_link(format!(
+                    "https://myanimelist.net/anime/21273/Gochuumon_wa_Usagi_desu_ka"
+                ))
+                .label("Add")
+                .style(ButtonStyle::Primary);
+
+                let data = CreateInteractionResponseMessage::new()
+                    .embed(anime_embed)
+                    .button(anime_button);
+                let builder = CreateInteractionResponse::Message(data);
+
+                if let Err(why) = component.create_response(&ctx.http, builder).await {
+                    println!("cannot respond to slash command: {why}");
+                }
+            }
+        }
+
+        if let Interaction::Command(command) = &interaction {
             let content = match command.data.name.as_str() {
                 "anime" => Some(commands::anime::run(&command.data.options()).await),
                 _ => None,
             };
 
             if let Some(content) = content {
-                // TODO: do something about multiple data vector from content
-                let anime_button = CreateButton::new_link(format!(
-                    "https://myanimelist.net/anime/21273/Gochuumon_wa_Usagi_desu_ka"
-                ))
-                .label("Save?");
-
-                let anime_embeds: Vec<CreateEmbed> = content
-                    .iter()
-                    .take(3)
-                    .map(|x| {
-                        CreateEmbed::new()
-                            .title(format!("{}", x.title))
-                            .url(format!("{}", x.url))
-                            .image(format!("{}", x.image))
-                            .description(format!("ID: {}, Synopsis: {}", x.id, x.synopsis))
-                    })
-                    .collect();
-
                 let anime_menu_options: Vec<CreateSelectMenuOption> = content
                     .iter()
-                    .take(3)
-                    .map(|x| CreateSelectMenuOption::new(x.title.clone(), x.title.clone()))
+                    .take(7)
+                    .map(|x| CreateSelectMenuOption::new(x.title.clone(), x.id.to_string().clone()))
                     .collect();
 
                 let anime_select = CreateSelectMenu::new(
@@ -56,12 +79,12 @@ impl EventHandler for Handler {
                     CreateSelectMenuKind::String {
                         options: anime_menu_options,
                     },
-                );
+                )
+                .placeholder("Which one? >_<")
+                .min_values(0)
+                .max_values(1);
 
-                let data = CreateInteractionResponseMessage::new()
-                    .embeds(anime_embeds)
-                    .select_menu(anime_select)
-                    .button(anime_button);
+                let data = CreateInteractionResponseMessage::new().select_menu(anime_select);
                 let builder = CreateInteractionResponse::Message(data);
 
                 if let Err(why) = command.create_response(&ctx.http, builder).await {

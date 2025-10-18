@@ -4,9 +4,6 @@ use serenity::model::application::{CommandOptionType, ResolvedOption, ResolvedVa
 pub struct MALAnime {
     pub id: i64,
     pub title: String,
-    pub url: String,
-    pub image: String,
-    pub synopsis: String,
 }
 
 pub async fn run(options: &[ResolvedOption<'_>]) -> Vec<MALAnime> {
@@ -30,7 +27,6 @@ pub async fn request(anime: &str) -> Result<Vec<MALAnime>, reqwest::Error> {
         .await?;
 
     println!("API called: {}", &endpoint);
-
     let mal_data = response["data"].as_array().unwrap();
 
     let mal_anime: Vec<MALAnime> = mal_data
@@ -38,12 +34,6 @@ pub async fn request(anime: &str) -> Result<Vec<MALAnime>, reqwest::Error> {
         .map(|x| MALAnime {
             id: x["mal_id"].as_i64().unwrap(),
             title: x["title"].as_str().unwrap().to_string(),
-            url: x["url"].as_str().unwrap().to_string(),
-            image: x["images"]["webp"]["image_url"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-            synopsis: x["synopsis"].as_str().unwrap().to_string(),
         })
         .collect();
 
