@@ -1,5 +1,5 @@
 mod commands;
-
+use rusqlite::Connection;
 use serenity::async_trait;
 use serenity::builder::{
     CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
@@ -10,7 +10,6 @@ use serenity::model::gateway::Ready;
 use serenity::model::id::GuildId;
 use serenity::prelude::{Client, Context, EventHandler, GatewayIntents};
 use std::env;
-
 struct Handler;
 
 #[async_trait]
@@ -44,11 +43,9 @@ impl EventHandler for Handler {
                         content.id, content.synopsis
                     ));
 
-                let anime_button = CreateButton::new_link(format!(
-                    "https://myanimelist.net/anime/21273/Gochuumon_wa_Usagi_desu_ka"
-                ))
-                .label("Add")
-                .style(ButtonStyle::Primary);
+                let anime_button = CreateButton::new("anime_button")
+                    .label("Add")
+                    .style(ButtonStyle::Primary);
 
                 let data = CreateInteractionResponseMessage::new()
                     .embed(anime_embed)
@@ -59,6 +56,30 @@ impl EventHandler for Handler {
                     println!("cannot respond to slash command: {why}");
                 }
             }
+
+            // save data
+            let conn = &open_connection();
+
+            let _ = match component.data.custom_id.as_str() {
+                "anime_button" => match &component.data.kind {
+                    ComponentInteractionDataKind::Button => {
+                        let sql = "
+                        INSERT INTO anime_user (user_id, user_name, anime_id, anime_title)
+                        VALUES (?1, ?2, ?3, ?4)
+                        ";
+
+                        if let Ok(mut insert_sql) = conn.prepare(sql) {
+                            if let Ok(_) = insert_sql.execute(["1", "test", "1", "test"]) {
+                                println!("good");
+                            }
+                        }
+
+                        Some("good")
+                    }
+                    _ => None,
+                },
+                _ => None,
+            };
         }
 
         if let Interaction::Command(command) = &interaction {
@@ -121,8 +142,44 @@ impl EventHandler for Handler {
     }
 }
 
+fn open_connection() -> Connection {
+    let db_file = "./src/rengo.db";
+
+    let conn = match Connection::open(db_file) {
+        Ok(conn) => conn,
+        Err(e) => {
+            panic!("Error connecting to database: {}", e);
+        }
+    };
+
+    conn
+}
+
+fn create_table(conn: &Connection) {
+    let sql = "
+    CREATE TABLE IF NOT EXISTS anime_user (
+        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+        user_id INTEGER,
+        user_name TEXT,
+        anime_id INTEGER,
+        anime_title TEXT
+    ) STRICT";
+
+    match conn.execute(sql, ()) {
+        Ok(_) => {
+            println!("Accessed a anime_user table.");
+        }
+        Err(e) => {
+            panic!("Error connecting to table: {}", e)
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
+    let conn = open_connection();
+    create_table(&conn);
+
     let token = env::var("DISCORD_TOKEN").expect("weird");
     let intents = GatewayIntents::empty();
 
