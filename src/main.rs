@@ -1,14 +1,10 @@
 mod commands;
-use rusqlite::Connection;
+mod interactions;
+mod utils;
 use serenity::async_trait;
-use serenity::builder::{
-    CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
-    CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption,
-};
-use serenity::model::application::{ButtonStyle, ComponentInteractionDataKind, Interaction};
+use serenity::model::application::Interaction;
 use serenity::model::gateway::Ready;
-use serenity::model::id::{GuildId, UserId};
-use serenity::model::mention::Mention;
+use serenity::model::id::GuildId;
 use serenity::prelude::{Client, Context, EventHandler, GatewayIntents};
 use std::env;
 use tokio::sync::mpsc;
@@ -32,137 +28,17 @@ struct Handler {
 impl EventHandler for Handler {
     // Dispatched when an interaction is created (e.g a slash command was used or a button was clicked).
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        println!("{:#?}, {:#?}", ctx, interaction);
+        // Debugging purpose
+        // println!("{:#?}, {:#?}", ctx, interaction);
 
         if let Interaction::Component(component) = &interaction {
-            let content = match component.data.custom_id.as_str() {
-                "anime_select" => match &component.data.kind {
-                    ComponentInteractionDataKind::StringSelect { values } => {
-                        if let Some(value_select) = values.first() {
-                            Some(commands::anime_id::run(value_select.as_str()).await)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                },
-                _ => None,
-            };
-
-            if let Some(content) = content {
-                let synopsis = content.synopsis;
-
-                let synopsis = match synopsis.char_indices().nth(1020) {
-                    Some((idx, _)) => synopsis[..idx].to_string(),
-                    None => synopsis,
-                };
-
-                let fields = [
-                    ("ID", content.id.to_string(), false),
-                    ("Synopsis", synopsis.to_string(), false),
-                ];
-
-                let anime_embed = CreateEmbed::new()
-                    .title(format!("{}", content.title))
-                    .url(format!("{}", content.url))
-                    .image(format!("{}", content.image))
-                    .fields(fields);
-
-                let anime_button = CreateButton::new("anime_button")
-                    .label("Add")
-                    .style(ButtonStyle::Primary);
-
-                let data = CreateInteractionResponseMessage::new()
-                    .embed(anime_embed)
-                    .button(anime_button);
-                let builder = CreateInteractionResponse::Message(data);
-
-                if let Err(why) = component.create_response(&ctx.http, builder).await {
-                    println!("cannot respond to slash command: {why}");
-                }
-            }
-
-            // save data
             let tx_save = self.tx.clone();
-            let user_id = component.user.id.get();
-            let user_name = component.user.name.to_string();
-            let anime_id: u64 = component.message.embeds[0].fields[0]
-                .value
-                .clone()
-                .parse()
-                .expect("Failed to parse string to integer");
-
-            let anime_title = match &component.message.embeds[0].title {
-                Some(value) => value.clone(),
-                None => "no".to_string(),
-            };
-
-            let save_content = match component.data.custom_id.as_str() {
-                "anime_button" => match &component.data.kind {
-                    ComponentInteractionDataKind::Button => {
-                        let user_mention = UserId::new(user_id);
-                        let message =
-                            format!("{}, Your data has been saved!", Mention::from(user_mention));
-
-                        tokio::spawn(async move {
-                            tx_save
-                                .send(DbCommand::SaveAnime {
-                                    user_id: user_id,
-                                    user_name: user_name,
-                                    anime_id: anime_id,
-                                    anime_title: anime_title,
-                                })
-                                .await
-                                .unwrap();
-                        });
-
-                        Some(message)
-                    }
-                    _ => None,
-                },
-                _ => None,
-            };
-
-            if let Some(save_content) = save_content {
-                let data = CreateInteractionResponseMessage::new().content(save_content);
-                let builder = CreateInteractionResponse::Message(data);
-
-                if let Err(why) = component.create_response(&ctx.http, builder).await {
-                    println!("cannot respond to slash command: {why}");
-                }
-            }
+            interactions::component::create_anime_embed(&ctx, component).await;
+            interactions::component::store_anime_list(&ctx, component, tx_save).await;
         }
 
         if let Interaction::Command(command) = &interaction {
-            let content = match command.data.name.as_str() {
-                "anime" => Some(commands::anime::run(&command.data.options()).await),
-                _ => None,
-            };
-
-            if let Some(content) = content {
-                let anime_menu_options: Vec<CreateSelectMenuOption> = content
-                    .iter()
-                    .take(7)
-                    .map(|x| CreateSelectMenuOption::new(x.title.clone(), x.id.to_string().clone()))
-                    .collect();
-
-                let anime_select = CreateSelectMenu::new(
-                    "anime_select",
-                    CreateSelectMenuKind::String {
-                        options: anime_menu_options,
-                    },
-                )
-                .placeholder("Which one? >_<")
-                .min_values(0)
-                .max_values(1);
-
-                let data = CreateInteractionResponseMessage::new().select_menu(anime_select);
-                let builder = CreateInteractionResponse::Message(data);
-
-                if let Err(why) = command.create_response(&ctx.http, builder).await {
-                    println!("cannot respond to slash command: {why}");
-                }
-            }
+            interactions::command::create_anime_select(&ctx, command).await;
         }
     }
 
@@ -193,78 +69,12 @@ impl EventHandler for Handler {
     }
 }
 
-fn create_table(conn: &Connection) {
-    let sql = "
-    CREATE TABLE IF NOT EXISTS anime_user (
-        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-        user_id INTEGER,
-        user_name TEXT,
-        anime_id INTEGER,
-        anime_title TEXT
-    ) STRICT";
-
-    match conn.execute(sql, ()) {
-        Ok(_) => {
-            println!("Accessed a anime_user table.");
-        }
-        Err(e) => {
-            panic!("Error connecting to table: {}", e)
-        }
-    }
-}
-
-async fn open_connection(mut rx: mpsc::Receiver<DbCommand>) {
-    let db_file = "./src/rengo.db";
-
-    let conn = match Connection::open(db_file) {
-        Ok(conn) => {
-            println!("Database connection opened.");
-            conn
-        }
-        Err(e) => {
-            panic!("Error connecting to database: {}", e);
-        }
-    };
-
-    while let Some(command) = rx.recv().await {
-        println!("Processing: {:?}", command);
-
-        match command {
-            DbCommand::CreateTable => {
-                create_table(&conn);
-            }
-            DbCommand::SaveAnime {
-                user_id,
-                user_name,
-                anime_id,
-                anime_title,
-            } => {
-                let sql = "
-                INSERT INTO anime_user (user_id, user_name, anime_id, anime_title)
-                VALUES (?1, ?2, ?3, ?4)
-                ";
-
-                if let Ok(mut insert_sql) = conn.prepare(sql) {
-                    if let Err(why) = insert_sql.execute([
-                        user_id.to_string(),
-                        user_name,
-                        anime_id.to_string(),
-                        anime_title,
-                    ]) {
-                        println!("Database error: {why:?}");
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() {
     let (tx, rx) = mpsc::channel(100);
     let tx_2 = tx.clone();
 
-    tokio::spawn(open_connection(rx));
+    tokio::spawn(utils::open_connection(rx));
 
     tokio::spawn(async move {
         tx.send(DbCommand::CreateTable).await.unwrap();

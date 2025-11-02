@@ -1,0 +1,114 @@
+use crate::DbCommand;
+use crate::commands;
+use serenity::builder::{
+    CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
+};
+use serenity::model::application::{
+    ButtonStyle, ComponentInteraction, ComponentInteractionDataKind,
+};
+use serenity::model::id::UserId;
+use serenity::model::mention::Mention;
+use serenity::prelude::Context;
+use tokio::sync::mpsc;
+
+pub async fn create_anime_embed(ctx: &Context, component: &ComponentInteraction) {
+    let content = match component.data.custom_id.as_str() {
+        "anime_select" => match &component.data.kind {
+            ComponentInteractionDataKind::StringSelect { values } => {
+                if let Some(value_select) = values.first() {
+                    Some(commands::anime_id::run(value_select.as_str()).await)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        },
+        _ => None,
+    };
+
+    if let Some(content) = content {
+        let synopsis = content.synopsis;
+
+        let synopsis = match synopsis.char_indices().nth(1020) {
+            Some((idx, _)) => synopsis[..idx].to_string(),
+            None => synopsis,
+        };
+
+        let fields = [
+            ("ID", content.id.to_string(), false),
+            ("Synopsis", synopsis.to_string(), false),
+        ];
+
+        let anime_embed = CreateEmbed::new()
+            .title(format!("{}", content.title))
+            .url(format!("{}", content.url))
+            .image(format!("{}", content.image))
+            .fields(fields);
+
+        let anime_button = CreateButton::new("anime_button")
+            .label("Add")
+            .style(ButtonStyle::Primary);
+
+        let data = CreateInteractionResponseMessage::new()
+            .embed(anime_embed)
+            .button(anime_button);
+        let builder = CreateInteractionResponse::Message(data);
+
+        if let Err(why) = component.create_response(&ctx.http, builder).await {
+            println!("cannot respond to slash command: {why}");
+        }
+    }
+}
+
+pub async fn store_anime_list(
+    ctx: &Context,
+    component: &ComponentInteraction,
+    tx_save: mpsc::Sender<DbCommand>,
+) {
+    let content = match component.data.custom_id.as_str() {
+        "anime_button" => match &component.data.kind {
+            ComponentInteractionDataKind::Button => {
+                let user_id = component.user.id.get();
+                let user_name = component.user.name.to_string();
+                let anime_id: u64 = component.message.embeds[0].fields[0]
+                    .value
+                    .clone()
+                    .parse()
+                    .expect("Failed to parse string to integer");
+
+                let anime_title = match &component.message.embeds[0].title {
+                    Some(value) => value.clone(),
+                    None => "no".to_string(),
+                };
+
+                let user_mention = UserId::new(user_id);
+                let message = format!("{}, Your data has been saved!", Mention::from(user_mention));
+
+                tokio::spawn(async move {
+                    tx_save
+                        .send(DbCommand::SaveAnime {
+                            user_id: user_id,
+                            user_name: user_name,
+                            anime_id: anime_id,
+                            anime_title: anime_title,
+                        })
+                        .await
+                        .unwrap();
+                });
+
+                Some(message)
+            }
+            _ => None,
+        },
+        _ => None,
+    };
+
+    if let Some(content) = content {
+        let data = CreateInteractionResponseMessage::new().content(content);
+        let builder = CreateInteractionResponse::Message(data);
+
+        if let Err(why) = component.create_response(&ctx.http, builder).await {
+            println!("cannot respond to slash command: {why}");
+        }
+    }
+}
