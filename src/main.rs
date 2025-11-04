@@ -2,7 +2,7 @@ mod commands;
 mod interactions;
 mod utils;
 use serenity::async_trait;
-use serenity::model::application::Interaction;
+use serenity::model::application::{ComponentInteraction, Interaction};
 use serenity::model::gateway::Ready;
 use serenity::model::id::GuildId;
 use serenity::prelude::{Client, Context, EventHandler, GatewayIntents};
@@ -17,6 +17,8 @@ enum DbCommand {
         user_name: String,
         anime_id: u64,
         anime_title: String,
+        component: ComponentInteraction,
+        ctx: Context,
     },
 }
 

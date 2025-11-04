@@ -47,7 +47,7 @@ pub fn register() -> CreateCommand {
             CreateCommandOption::new(
                 CommandOptionType::String,
                 "search",
-                "What do you want to see?",
+                "Nya~ What do you want to check out? >⩊<",
             )
             .required(true),
         )

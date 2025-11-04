@@ -6,8 +6,6 @@ use serenity::builder::{
 use serenity::model::application::{
     ButtonStyle, ComponentInteraction, ComponentInteractionDataKind,
 };
-use serenity::model::id::UserId;
-use serenity::model::mention::Mention;
 use serenity::prelude::Context;
 use tokio::sync::mpsc;
 
@@ -65,7 +63,7 @@ pub async fn store_anime_list(
     component: &ComponentInteraction,
     tx_save: mpsc::Sender<DbCommand>,
 ) {
-    let content = match component.data.custom_id.as_str() {
+    match component.data.custom_id.as_str() {
         "anime_button" => match &component.data.kind {
             ComponentInteractionDataKind::Button => {
                 let user_id = component.user.id.get();
@@ -81,8 +79,8 @@ pub async fn store_anime_list(
                     None => "no".to_string(),
                 };
 
-                let user_mention = UserId::new(user_id);
-                let message = format!("{}, Your data has been saved!", Mention::from(user_mention));
+                let component_2 = component.clone();
+                let ctx_2 = ctx.clone();
 
                 tokio::spawn(async move {
                     tx_save
@@ -91,24 +89,15 @@ pub async fn store_anime_list(
                             user_name: user_name,
                             anime_id: anime_id,
                             anime_title: anime_title,
+                            component: component_2,
+                            ctx: ctx_2,
                         })
                         .await
                         .unwrap();
                 });
-
-                Some(message)
             }
-            _ => None,
+            _ => println!("wow"),
         },
-        _ => None,
+        _ => println!("wow"),
     };
-
-    if let Some(content) = content {
-        let data = CreateInteractionResponseMessage::new().content(content);
-        let builder = CreateInteractionResponse::Message(data);
-
-        if let Err(why) = component.create_response(&ctx.http, builder).await {
-            println!("cannot respond to slash command: {why}");
-        }
-    }
 }
