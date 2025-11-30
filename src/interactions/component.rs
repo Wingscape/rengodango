@@ -1,5 +1,5 @@
 use crate::DbCommand;
-use crate::commands;
+use crate::interactions::anime_id;
 use serenity::builder::{
     CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
 };
@@ -14,7 +14,7 @@ pub async fn create_anime_embed(ctx: &Context, component: &ComponentInteraction)
         "anime_select" => match &component.data.kind {
             ComponentInteractionDataKind::StringSelect { values } => {
                 if let Some(value_select) = values.first() {
-                    Some(commands::anime_id::run(value_select.as_str()).await)
+                    Some(anime_id::run(value_select.as_str()).await)
                 } else {
                     None
                 }
@@ -79,8 +79,8 @@ pub async fn store_anime_list(
                     None => "no".to_string(),
                 };
 
-                let component_2 = component.clone();
-                let ctx_2 = ctx.clone();
+                let component_save = component.clone();
+                let ctx_save = ctx.clone();
 
                 tokio::spawn(async move {
                     tx_save
@@ -89,8 +89,8 @@ pub async fn store_anime_list(
                             user_name: user_name,
                             anime_id: anime_id,
                             anime_title: anime_title,
-                            component: component_2,
-                            ctx: ctx_2,
+                            component: component_save,
+                            ctx: ctx_save,
                         })
                         .await
                         .unwrap();

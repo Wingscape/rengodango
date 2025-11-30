@@ -42,7 +42,7 @@ pub async fn request(anime: &str) -> Result<Vec<MALAnime>, reqwest::Error> {
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("anime")
-        .description("Rengo-chan will help you with your anime stuff! :))")
+        .description("Rengo-chan will help you with your anime stuff! :D")
         .add_option(
             CreateCommandOption::new(
                 CommandOptionType::String,

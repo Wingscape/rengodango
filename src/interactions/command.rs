@@ -1,3 +1,4 @@
+use crate::DbCommand;
 use crate::commands;
 use serenity::builder::{
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateSelectMenu,
@@ -5,6 +6,7 @@ use serenity::builder::{
 };
 use serenity::model::application::CommandInteraction;
 use serenity::prelude::Context;
+use tokio::sync::mpsc;
 
 pub async fn create_anime_select(ctx: &Context, command: &CommandInteraction) {
     let content = match command.data.name.as_str() {
@@ -36,4 +38,31 @@ pub async fn create_anime_select(ctx: &Context, command: &CommandInteraction) {
             println!("cannot respond to slash command: {why}");
         }
     }
+}
+
+pub async fn display_anime_list(
+    ctx: &Context,
+    command: &CommandInteraction,
+    tx_display: mpsc::Sender<DbCommand>,
+) {
+    let command_show = command.clone();
+    let ctx_show = ctx.clone();
+
+    match command.data.name.as_str() {
+        "show" => {
+            let user_id = command.user.id.get();
+
+            tokio::spawn(async move {
+                tx_display
+                    .send(DbCommand::ShowAnime {
+                        user_id: user_id,
+                        command: command_show,
+                        ctx: ctx_show,
+                    })
+                    .await
+                    .unwrap();
+            });
+        }
+        _ => println!("wow"),
+    };
 }

@@ -2,7 +2,7 @@ mod commands;
 mod interactions;
 mod utils;
 use serenity::async_trait;
-use serenity::model::application::{ComponentInteraction, Interaction};
+use serenity::model::application::{CommandInteraction, ComponentInteraction, Interaction};
 use serenity::model::gateway::Ready;
 use serenity::model::id::GuildId;
 use serenity::prelude::{Client, Context, EventHandler, GatewayIntents};
@@ -18,6 +18,11 @@ enum DbCommand {
         anime_id: u64,
         anime_title: String,
         component: ComponentInteraction,
+        ctx: Context,
+    },
+    ShowAnime {
+        user_id: u64,
+        command: CommandInteraction,
         ctx: Context,
     },
 }
@@ -40,7 +45,9 @@ impl EventHandler for Handler {
         }
 
         if let Interaction::Command(command) = &interaction {
+            let tx_display = self.tx.clone();
             interactions::command::create_anime_select(&ctx, command).await;
+            interactions::command::display_anime_list(&ctx, command, tx_display).await;
         }
     }
 
@@ -56,7 +63,10 @@ impl EventHandler for Handler {
         );
 
         let commands = guild_id
-            .set_commands(&ctx.http, vec![commands::anime::register()])
+            .set_commands(
+                &ctx.http,
+                vec![commands::anime::register(), commands::show::register()],
+            )
             .await;
 
         match commands {
