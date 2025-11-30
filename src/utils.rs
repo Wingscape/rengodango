@@ -118,6 +118,60 @@ fn user_anime_list(conn: &Connection, user_id: u64) -> Vec<AnimeList> {
     anime_list_final
 }
 
+fn draw_image(anime_list: Vec<AnimeList>, file_name: &str) {
+    let mut white_bg = RgbImage::from_fn(400, 600, |_, _| Rgb([255, 255, 255]));
+
+    let noto_bold_font = Vec::from(include_bytes!("../NotoSansHK-Bold.ttf") as &[u8]);
+    let noto_bold_font = FontVec::try_from_vec(noto_bold_font).unwrap();
+
+    let noto_reg_font = Vec::from(include_bytes!("../NotoSansHK-Regular.ttf") as &[u8]);
+    let noto_reg_font = FontVec::try_from_vec(noto_reg_font).unwrap();
+
+    // font size
+    let scale = PxScale::from(30.0);
+
+    let red = 50;
+    let green = 50;
+    let blue = 50;
+
+    let mut y = 600;
+
+    for anime in anime_list {
+        let anime_title = anime.anime_title;
+
+        let anime_title = match anime_title.char_indices().nth(32) {
+            Some((idx, _)) => format!("{}...", anime_title[..idx].to_string()),
+            None => anime_title,
+        };
+
+        white_bg = draw_text(
+            &white_bg,
+            Rgb([red, green, blue]),
+            400 / 20,
+            y / 20,
+            scale,
+            &noto_bold_font,
+            anime_title.as_str(),
+        );
+
+        y = y + 600;
+
+        white_bg = draw_text(
+            &white_bg,
+            Rgb([red, green, blue]),
+            400 / 20,
+            y / 20,
+            scale,
+            &noto_reg_font,
+            format!("ID: {}", anime.anime_id).as_str(),
+        );
+
+        y = y + 1000;
+    }
+
+    white_bg.save(file_name).unwrap();
+}
+
 pub async fn open_connection(mut rx: mpsc::Receiver<DbCommand>) {
     let db_file = "./src/rengo.db";
 
@@ -184,42 +238,15 @@ pub async fn open_connection(mut rx: mpsc::Receiver<DbCommand>) {
                 command,
                 ctx,
             } => {
+                let file_name = "animelist.png";
                 let anime_list = user_anime_list(&conn, user_id);
-                let mut white_bg = RgbImage::from_fn(400, 600, |_, _| Rgb([255, 255, 255]));
 
-                let font = Vec::from(include_bytes!("/Library/Fonts/Arial Unicode.ttf") as &[u8]);
-                let font = FontVec::try_from_vec(font).unwrap();
-
-                // font size
-                let scale = PxScale::from(30.0);
-
-                let red = 50;
-                let green = 50;
-                let blue = 50;
-
-                let mut y = 600;
-
-                for anime in anime_list {
-                    white_bg = draw_text(
-                        &white_bg,
-                        Rgb([red, green, blue]),
-                        400 / 20,
-                        y / 20,
-                        scale,
-                        &font,
-                        anime.anime_title.as_str(),
-                    );
-
-                    y = y + 900;
-                }
-
-                white_bg.save("animelist.png").unwrap();
-
-                let path = CreateAttachment::path("animelist.png").await.unwrap();
+                draw_image(anime_list, file_name);
+                let path = CreateAttachment::path(file_name).await.unwrap();
 
                 let list_embed = CreateEmbed::new()
                     .title(format!("test"))
-                    .image("attachment://animelist.png");
+                    .image(format!("attachment://{}", file_name));
 
                 let data = CreateInteractionResponseMessage::new()
                     .embed(list_embed)
