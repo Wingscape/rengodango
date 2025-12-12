@@ -10,6 +10,12 @@ use std::env;
 use tokio::sync::mpsc;
 
 #[derive(Debug)]
+enum AnimeInteraction {
+    AnimeCommand(CommandInteraction),
+    AnimeComponent(ComponentInteraction),
+}
+
+#[derive(Debug)]
 enum DbCommand {
     CreateTable,
     SaveAnime {
@@ -22,7 +28,10 @@ enum DbCommand {
     },
     ShowAnime {
         user_id: u64,
-        command: CommandInteraction,
+        offset: u8,
+        limit: u8,
+        next: u8,
+        anime_interaction: AnimeInteraction,
         ctx: Context,
     },
 }
@@ -40,8 +49,11 @@ impl EventHandler for Handler {
 
         if let Interaction::Component(component) = &interaction {
             let tx_save = self.tx.clone();
+            let tx_display_2 = self.tx.clone();
+
             interactions::component::create_anime_embed(&ctx, component).await;
             interactions::component::store_anime_list(&ctx, component, tx_save).await;
+            interactions::component::display_anime_list_page(&ctx, component, tx_display_2).await;
         }
 
         if let Interaction::Command(command) = &interaction {

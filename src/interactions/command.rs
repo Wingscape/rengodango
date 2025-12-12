@@ -1,5 +1,5 @@
-use crate::DbCommand;
 use crate::commands;
+use crate::{AnimeInteraction, DbCommand};
 use serenity::builder::{
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateSelectMenu,
     CreateSelectMenuKind, CreateSelectMenuOption,
@@ -47,6 +47,7 @@ pub async fn display_anime_list(
 ) {
     let command_show = command.clone();
     let ctx_show = ctx.clone();
+    let page: (u8, u8) = (0, 7);
 
     match command.data.name.as_str() {
         "show" => {
@@ -56,7 +57,10 @@ pub async fn display_anime_list(
                 tx_display
                     .send(DbCommand::ShowAnime {
                         user_id: user_id,
-                        command: command_show,
+                        offset: page.0,
+                        limit: page.1,
+                        next: 2,
+                        anime_interaction: AnimeInteraction::AnimeCommand(command_show),
                         ctx: ctx_show,
                     })
                     .await

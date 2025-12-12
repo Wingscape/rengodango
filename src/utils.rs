@@ -1,12 +1,14 @@
-use crate::DbCommand;
+use crate::{AnimeInteraction, DbCommand};
 use ab_glyph::{FontVec, PxScale};
 use image::{Rgb, RgbImage};
 use imageproc::drawing::draw_text;
 use rand::seq::IndexedRandom;
 use rusqlite::Connection;
 use serenity::builder::{
-    CreateAttachment, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
+    CreateActionRow, CreateAttachment, CreateButton, CreateEmbed, CreateEmbedFooter,
+    CreateInteractionResponse, CreateInteractionResponseMessage,
 };
+use serenity::model::application::ButtonStyle;
 use serenity::model::id::UserId;
 use serenity::model::mention::Mention;
 use tokio::sync::mpsc;
@@ -83,21 +85,24 @@ fn is_anime_empty(conn: &Connection, user_id: u64, anime_id: u64) -> bool {
     }
 }
 
-fn user_anime_list(conn: &Connection, user_id: u64) -> Vec<AnimeList> {
+fn user_anime_list(conn: &Connection, user_id: u64, offset: u8, limit: u8) -> Vec<AnimeList> {
     let sql = "
     SELECT anime_id, anime_title FROM anime_user
-    WHERE user_id = ?1
+    WHERE user_id = ?1 LIMIT ?3 OFFSET ?2
     ";
 
     let mut anime_list_final: Vec<AnimeList> = Vec::new();
 
     if let Ok(mut select_sql) = conn.prepare(sql) {
-        let rows = match select_sql.query_map([user_id.to_string()], |row| {
-            Ok(AnimeList {
-                anime_id: row.get(0)?,
-                anime_title: row.get(1)?,
-            })
-        }) {
+        let rows = match select_sql.query_map(
+            [user_id.to_string(), offset.to_string(), limit.to_string()],
+            |row| {
+                Ok(AnimeList {
+                    anime_id: row.get(0)?,
+                    anime_title: row.get(1)?,
+                })
+            },
+        ) {
             Ok(data) => data,
             Err(_) => panic!("Not good"),
         };
@@ -235,27 +240,65 @@ pub async fn open_connection(mut rx: mpsc::Receiver<DbCommand>) {
             }
             DbCommand::ShowAnime {
                 user_id,
-                command,
+                offset,
+                limit,
+                next,
+                anime_interaction,
                 ctx,
             } => {
+                let user_mention = UserId::new(user_id);
                 let file_name = "animelist.png";
-                let anime_list = user_anime_list(&conn, user_id);
+                let anime_list = user_anime_list(&conn, user_id, offset, limit);
 
                 draw_image(anime_list, file_name);
                 let path = CreateAttachment::path(file_name).await.unwrap();
 
                 let list_embed = CreateEmbed::new()
-                    .title(format!("test"))
+                    .title(format!("Your precious Anime List~!"))
+                    .description(format!("User: {}", Mention::from(user_mention)))
+                    .footer(CreateEmbedFooter::new(format!(
+                        "Page {}",
+                        (next - 1).to_string()
+                    )))
                     .image(format!("attachment://{}", file_name));
+
+                let mut row_buttons = Vec::new();
+
+                if offset != 0 {
+                    let prev_button = CreateButton::new((next - 1).to_string())
+                        .label("Prev")
+                        .style(ButtonStyle::Secondary);
+
+                    row_buttons.push(prev_button);
+                }
+
+                let next_button = CreateButton::new(next.to_string())
+                    .label("Next")
+                    .style(ButtonStyle::Secondary);
+
+                row_buttons.push(next_button);
+                let row_components = CreateActionRow::Buttons(row_buttons);
 
                 let data = CreateInteractionResponseMessage::new()
                     .embed(list_embed)
+                    .components(vec![row_components])
                     .add_file(path);
+
                 let builder = CreateInteractionResponse::Message(data);
 
-                if let Err(why) = command.create_response(&ctx.http, builder).await {
-                    println!("cannot respond to slash command: {why}");
-                }
+                match anime_interaction {
+                    // TODO: can we do something about this, like maybe trait implementation
+                    AnimeInteraction::AnimeCommand(command) => {
+                        if let Err(why) = command.create_response(&ctx.http, builder).await {
+                            println!("cannot respond to slash command: {why}");
+                        }
+                    }
+                    AnimeInteraction::AnimeComponent(component) => {
+                        if let Err(why) = component.create_response(&ctx.http, builder).await {
+                            println!("cannot respond to slash command: {why}");
+                        }
+                    }
+                };
             }
         }
     }
