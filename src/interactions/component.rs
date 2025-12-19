@@ -107,56 +107,57 @@ pub async fn display_anime_list_page(
     component: &ComponentInteraction,
     tx_display: mpsc::Sender<DbCommand>,
 ) {
-    let component_show = component.clone();
-    let ctx_show = ctx.clone();
+    match &component.message.components[0].components[0] {
+        ActionRowComponent::Button(button_action) => {
+            let mut component_custom_id: u8 = component.data.custom_id.to_string().parse().unwrap();
+            let user_id = component.user.id.get();
 
-    let mut component_custom_id: u8 = component.data.custom_id.to_string().parse().unwrap();
-    let user_id = component.user.id.get();
+            let base_number = 7;
+            let mut page: (u8, u8) = (
+                base_number * (component_custom_id - 1),
+                base_number * component_custom_id,
+            );
 
-    let base_number = 7;
-    let mut page: (u8, u8) = (
-        base_number * (component_custom_id - 1),
-        base_number * component_custom_id,
-    );
-    let action_component = &component.message.components[0].components[0];
+            match &button_action.label {
+                Some(label) => match &button_action.data {
+                    ButtonKind::NonLink {
+                        custom_id,
+                        #[allow(unused_variables)]
+                        style,
+                    } => {
+                        let custom_id: u8 = custom_id.to_string().parse().unwrap();
 
-    match action_component {
-        ActionRowComponent::Button(button_action) => match &button_action.label {
-            Some(label) => match &button_action.data {
-                ButtonKind::NonLink {
-                    custom_id,
-                    #[allow(unused_variables)]
-                    style,
-                } => {
-                    let custom_id: u8 = custom_id.to_string().parse().unwrap();
+                        if label == "Prev" && custom_id == component_custom_id {
+                            page = (
+                                base_number * (component_custom_id - 2),
+                                base_number * (component_custom_id - 1),
+                            );
 
-                    if label == "Prev" && custom_id == component_custom_id {
-                        page = (
-                            base_number * (component_custom_id - 2),
-                            base_number * (component_custom_id - 1),
-                        );
-
-                        component_custom_id = component_custom_id - 1;
+                            component_custom_id = component_custom_id - 1;
+                        }
                     }
-                }
-                _ => println!("wow"),
-            },
-            None => println!("wow"),
-        },
+                    _ => println!("wow"),
+                },
+                None => println!("wow"),
+            }
+
+            let component_show = component.clone();
+            let ctx_show = ctx.clone();
+
+            tokio::spawn(async move {
+                tx_display
+                    .send(DbCommand::ShowAnime {
+                        user_id: user_id,
+                        offset: page.0,
+                        limit: page.1,
+                        next: component_custom_id + 1,
+                        anime_interaction: AnimeInteraction::AnimeComponent(component_show),
+                        ctx: ctx_show,
+                    })
+                    .await
+                    .unwrap();
+            });
+        }
         _ => println!("wow"),
     }
-
-    tokio::spawn(async move {
-        tx_display
-            .send(DbCommand::ShowAnime {
-                user_id: user_id,
-                offset: page.0,
-                limit: page.1,
-                next: component_custom_id + 1,
-                anime_interaction: AnimeInteraction::AnimeComponent(component_show),
-                ctx: ctx_show,
-            })
-            .await
-            .unwrap();
-    });
 }

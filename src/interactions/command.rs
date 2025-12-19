@@ -45,12 +45,12 @@ pub async fn display_anime_list(
     command: &CommandInteraction,
     tx_display: mpsc::Sender<DbCommand>,
 ) {
-    let command_show = command.clone();
-    let ctx_show = ctx.clone();
-    let page: (u8, u8) = (0, 7);
-
     match command.data.name.as_str() {
         "show" => {
+            let command_show = command.clone();
+            let ctx_show = ctx.clone();
+
+            let page: (u8, u8) = (0, 7);
             let user_id = command.user.id.get();
 
             tokio::spawn(async move {

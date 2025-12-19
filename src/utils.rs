@@ -13,7 +13,7 @@ use serenity::model::id::UserId;
 use serenity::model::mention::Mention;
 use tokio::sync::mpsc;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct AnimeList {
     anime_id: u64,
     anime_title: String,
@@ -95,7 +95,11 @@ fn user_anime_list(conn: &Connection, user_id: u64, offset: u8, limit: u8) -> Ve
 
     if let Ok(mut select_sql) = conn.prepare(sql) {
         let rows = match select_sql.query_map(
-            [user_id.to_string(), offset.to_string(), limit.to_string()],
+            [
+                user_id.to_string(),
+                offset.to_string(),
+                (limit + 1).to_string(),
+            ],
             |row| {
                 Ok(AnimeList {
                     anime_id: row.get(0)?,
@@ -248,9 +252,15 @@ pub async fn open_connection(mut rx: mpsc::Receiver<DbCommand>) {
             } => {
                 let user_mention = UserId::new(user_id);
                 let file_name = "animelist.png";
-                let anime_list = user_anime_list(&conn, user_id, offset, limit);
 
-                draw_image(anime_list, file_name);
+                let anime_list = user_anime_list(&conn, user_id, offset, limit);
+                let mut anime_draw = anime_list.clone();
+
+                if anime_list.len() > 7 {
+                    anime_draw = anime_draw[..7 as usize].to_vec();
+                }
+
+                draw_image(anime_draw, file_name);
                 let path = CreateAttachment::path(file_name).await.unwrap();
 
                 let list_embed = CreateEmbed::new()
@@ -272,28 +282,38 @@ pub async fn open_connection(mut rx: mpsc::Receiver<DbCommand>) {
                     row_buttons.push(prev_button);
                 }
 
-                let next_button = CreateButton::new(next.to_string())
-                    .label("Next")
-                    .style(ButtonStyle::Secondary);
+                if anime_list.len() > 7 as usize {
+                    let next_button = CreateButton::new(next.to_string())
+                        .label("Next")
+                        .style(ButtonStyle::Secondary);
 
-                row_buttons.push(next_button);
+                    row_buttons.push(next_button);
+                }
+
                 let row_components = CreateActionRow::Buttons(row_buttons);
-
-                let data = CreateInteractionResponseMessage::new()
-                    .embed(list_embed)
-                    .components(vec![row_components])
-                    .add_file(path);
-
-                let builder = CreateInteractionResponse::Message(data);
 
                 match anime_interaction {
                     // TODO: can we do something about this, like maybe trait implementation
                     AnimeInteraction::AnimeCommand(command) => {
+                        let data = CreateInteractionResponseMessage::new()
+                            .embed(list_embed)
+                            .components(vec![row_components])
+                            .add_file(path);
+
+                        let builder = CreateInteractionResponse::Message(data);
+
                         if let Err(why) = command.create_response(&ctx.http, builder).await {
                             println!("cannot respond to slash command: {why}");
                         }
                     }
                     AnimeInteraction::AnimeComponent(component) => {
+                        let data = CreateInteractionResponseMessage::new()
+                            .embed(list_embed)
+                            .components(vec![row_components])
+                            .add_file(path);
+
+                        let builder = CreateInteractionResponse::UpdateMessage(data);
+
                         if let Err(why) = component.create_response(&ctx.http, builder).await {
                             println!("cannot respond to slash command: {why}");
                         }
