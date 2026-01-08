@@ -40,6 +40,66 @@ fn create_table(conn: &Connection) {
     }
 }
 
+fn create_virtual_table(conn: &Connection) {
+    let sql = "
+    CREATE VIRTUAL TABLE IF NOT EXISTS anime_user_search
+    USING fts5(anime_title, content='anime_user', content_rowid='id')";
+
+    match conn.execute(sql, ()) {
+        Ok(_) => {
+            println!("Accessed a anime_user_search virtual table.");
+        }
+        Err(e) => {
+            panic!("Error connecting to table: {}", e)
+        }
+    }
+}
+
+fn create_search_triggers(conn: &Connection) {
+    let insert_trigger_sql = "
+    CREATE TRIGGER IF NOT EXISTS insert_trigger AFTER INSERT ON anime_user BEGIN
+        INSERT INTO anime_user_search(rowid, anime_title) VALUES (new.id, new.anime_title);
+    END;";
+
+    let delete_trigger_sql = "
+    CREATE TRIGGER IF NOT EXISTS delete_trigger AFTER DELETE ON anime_user BEGIN
+        INSERT INTO anime_user_search(anime_user_search, rowid, anime_title) VALUES ('delete', old.id, old.anime_title);
+    END;";
+
+    let update_trigger_sql = "
+    CREATE TRIGGER IF NOT EXISTS update_trigger AFTER UPDATE ON anime_user BEGIN
+        INSERT INTO anime_user_search(anime_user_search, rowid, anime_title) VALUES ('delete', old.id, old.anime_title);
+        INSERT INTO anime_user_search(rowid, anime_title) VALUES (new.id, new.anime_title);
+    END;";
+
+    match conn.execute(insert_trigger_sql, ()) {
+        Ok(_) => {
+            println!("Set insert trigger virtual table.");
+        }
+        Err(e) => {
+            panic!("Error connecting to table: {}", e)
+        }
+    }
+
+    match conn.execute(delete_trigger_sql, ()) {
+        Ok(_) => {
+            println!("Set delete trigger virtual table.");
+        }
+        Err(e) => {
+            panic!("Error connecting to table: {}", e)
+        }
+    }
+
+    match conn.execute(update_trigger_sql, ()) {
+        Ok(_) => {
+            println!("Set update trigger virtual table.");
+        }
+        Err(e) => {
+            panic!("Error connecting to table: {}", e)
+        }
+    }
+}
+
 fn store_anime_list(
     conn: &Connection,
     user_id: u64,
@@ -200,6 +260,8 @@ pub async fn open_connection(mut rx: mpsc::Receiver<DbCommand>) {
         match command {
             DbCommand::CreateTable => {
                 create_table(&conn);
+                create_virtual_table(&conn);
+                create_search_triggers(&conn);
             }
             DbCommand::SaveAnime {
                 user_id,
